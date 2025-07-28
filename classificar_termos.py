@@ -1,28 +1,45 @@
+import os
 import openai
 import pandas as pd
 import time
-import os
 
-# Carregar chave da API do segredo de ambiente
+# Chave da API via variável de ambiente (seguro para uso com GitHub Actions)
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Carregar o arquivo Excel com os termos
-df = pd.read_excel("termos.xlsx")
-termos = df["Termo"].dropna().tolist()
+# Criar cliente OpenAI
+client = openai.OpenAI()
 
-# Dividir em blocos
+# Carregar os arquivos de entrada
+df_termos = pd.read_excel("termos.xlsx")
+df_categorias = pd.read_excel("categorias.xlsx")
+
+# Extrair termos
+termos = df_termos["Termo"].dropna().tolist()
+
+# Gerar string de categorias e subcategorias no formato: "- Classe > Subclasse"
+categorias_subcategorias = "\n".join(
+    df_categorias.apply(lambda row: f"- {row['Classe']} > {row['Subclasse']}", axis=1)
+)
+
+# Parâmetros
 bloco_tamanho = 30
 resultados = []
 
+# Processamento por blocos
 for i in range(0, len(termos), bloco_tamanho):
-    lote = termos[i:i+bloco_tamanho]
+    lote = termos[i:i + bloco_tamanho]
+
     prompt = f"""
-Classifique semanticamente os seguintes termos com base em um modelo de conhecimento que possui categorias e subcategorias.
+Você deve classificar semanticamente os seguintes termos com base nas categorias abaixo.
+
+Categorias válidas:
+{categorias_subcategorias}
 
 Para cada termo, atribua:
 - uma Classe (categoria principal)
-- uma Subclasse (subcategoria mais apropriada)
-- Se necessário, crie uma subclasse nova e adicione um asterisco (*)
+- uma Subclasse (subcategoria listada acima)
+
+Se nenhuma subclasse for apropriada, crie uma nova e marque com asterisco (*)
 
 Formato da resposta: Termo | Classe | Subclasse
 
@@ -33,22 +50,26 @@ Responda apenas com a tabela.
 """
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )
-        resposta = response['choices'][0]['message']['content']
+
+        resposta = response.choices[0].message.content
+
         for linha in resposta.strip().split("\n"):
             if "|" in linha:
                 partes = [p.strip() for p in linha.split("|")]
                 if len(partes) == 3:
                     resultados.append(partes)
-        time.sleep(1)
+
+        time.sleep(1)  # Respeitar limites da API
+
     except Exception as e:
         print(f"Erro no bloco {i}: {e}")
 
-# Gerar planilha com os resultados
+# Gerar DataFrame de saída e salvar
 df_resultado = pd.DataFrame(resultados, columns=["Termo", "Classe", "Subclasse"])
 df_resultado.to_excel("resultado.xlsx", index=False)
-print("Classificação concluída e salva em resultado.xlsx")
+print("Classificação concluída com sucesso. Arquivo salvo como resultado.xlsx.")
