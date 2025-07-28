@@ -3,25 +3,22 @@ import openai
 import pandas as pd
 import time
 
-# Chave da API via variável de ambiente (seguro para uso com GitHub Actions)
+# Chave da API via variável de ambiente
 openai.api_key = os.getenv("OPENAI_API_KEY")
-
-# Criar cliente OpenAI
-client = openai.OpenAI()
 
 # Carregar os arquivos de entrada
 df_termos = pd.read_excel("termos.xlsx")
 df_categorias = pd.read_excel("categorias.xlsx")
 
-# Extrair termos
+# Extrair termos da planilha
 termos = df_termos["Termo"].dropna().tolist()
 
-# Gerar string de categorias e subcategorias no formato: "- Classe > Subclasse"
+# Gerar string com as categorias e subcategorias no formato "- Classe > Subclasse"
 categorias_subcategorias = "\n".join(
     df_categorias.apply(lambda row: f"- {row['Classe']} > {row['Subclasse']}", axis=1)
 )
 
-# Parâmetros
+# Configurações
 bloco_tamanho = 30
 resultados = []
 
@@ -50,13 +47,13 @@ Responda apenas com a tabela.
 """
 
     try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo"
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )
 
-        resposta = response.choices[0].message.content
+        resposta = response["choices"][0]["message"]["content"]
 
         for linha in resposta.strip().split("\n"):
             if "|" in linha:
@@ -64,12 +61,12 @@ Responda apenas com a tabela.
                 if len(partes) == 3:
                     resultados.append(partes)
 
-        time.sleep(1)  # Respeitar limites da API
+        time.sleep(1)  # Evita atingir o rate limit da API
 
     except Exception as e:
-        print(f"Erro no bloco {i}: {e}")
+        print(f"Erro no bloco {i}:", e)
 
-# Gerar DataFrame de saída e salvar
+# Gerar a planilha final com os resultados
 df_resultado = pd.DataFrame(resultados, columns=["Termo", "Classe", "Subclasse"])
 df_resultado.to_excel("resultado.xlsx", index=False)
 print("Classificação concluída com sucesso. Arquivo salvo como resultado.xlsx.")
