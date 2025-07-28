@@ -1,72 +1,72 @@
-import os
 import openai
+import os
 import pandas as pd
 import time
 
-# Chave da API via variável de ambiente
+# Configurar chave da API (via variável de ambiente segura)
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Carregar os arquivos de entrada
-df_termos = pd.read_excel("termos.xlsx")
-df_categorias = pd.read_excel("categorias.xlsx")
+# Carregar arquivos
+df = pd.read_excel("termos.xlsx")
+categorias_df = pd.read_excel("categorias.xlsx")
 
-# Extrair termos da planilha
-termos = df_termos["Termo"].dropna().tolist()
+# Obter listas de classes e subclasses válidas
+classes_validas = set(categorias_df["Classe"].dropna().unique())
+subclasses_validas = set(categorias_df["Subclasse"].dropna().unique())
 
-# Gerar string com as categorias e subcategorias no formato "- Classe > Subclasse"
-categorias_subcategorias = "\n".join(
-    df_categorias.apply(lambda row: f"- {row['Classe']} > {row['Subclasse']}", axis=1)
-)
-
-# Configurações
+# Parâmetros
+modelo = "gpt-3.5-turbo"
 bloco_tamanho = 30
+termos = df["Termo"].dropna().tolist()
 resultados = []
 
-# Processamento por blocos
+# Loop por blocos
 for i in range(0, len(termos), bloco_tamanho):
-    lote = termos[i:i + bloco_tamanho]
+    lote = termos[i:i+bloco_tamanho]
 
     prompt = f"""
-Você deve classificar semanticamente os seguintes termos com base nas categorias abaixo.
+Você é um classificador de termos. Seu objetivo é analisar semanticamente os termos recebidos e atribuir a cada um deles uma Classe e uma Subclasse, com base em um modelo de conhecimento pré-definido.
 
-Categorias válidas:
-{categorias_subcategorias}
-
-Para cada termo, atribua:
-- uma Classe (categoria principal)
-- uma Subclasse (subcategoria listada acima)
-
-Se nenhuma subclasse for apropriada, crie uma nova e marque com asterisco (*)
-
-Formato da resposta: Termo | Classe | Subclasse
+Suas regras:
+- Use sempre uma Classe e uma Subclasse para cada termo.
+- As Classes e Subclasses válidas estão na tabela fornecida pelo conhecimento (documento categorias.xlsx).
+- Se você sugerir uma nova Subclasse que não estiver na lista conhecida, adicione um asterisco (*) ao final da Subclasse.
+- Mantenha o nome original do termo.
+- Utilize este formato: Termo | Classe | Subclasse
 
 Termos:
 {chr(10).join(f"- {termo}" for termo in lote)}
 
-Responda apenas com a tabela.
+Retorne apenas a tabela formatada.
 """
 
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+        resposta = openai.ChatCompletion.create(
+            model=modelo,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.3
         )
+        texto = resposta.choices[0].message["content"]
 
-        resposta = response["choices"][0]["message"]["content"]
-
-        for linha in resposta.strip().split("\n"):
+        # Parse da resposta
+        for linha in texto.split("\n"):
             if "|" in linha:
                 partes = [p.strip() for p in linha.split("|")]
                 if len(partes) == 3:
-                    resultados.append(partes)
+                    termo, classe, subclasse = partes
+                    if classe not in classes_validas:
+                        classe += "*"  # Classe nova
+                    if subclasse not in subclasses_validas:
+                        subclasse += "*"  # Subclasse nova
+                    resultados.append([termo, classe, subclasse])
 
-        time.sleep(1)  # Evita atingir o rate limit da API
+        time.sleep(1)  # Evitar rate limit
 
     except Exception as e:
-        print(f"Erro no bloco {i}:", e)
+        print(f"Erro no bloco {i}: {e}")
 
-# Gerar a planilha final com os resultados
-df_resultado = pd.DataFrame(resultados, columns=["Termo", "Classe", "Subclasse"])
-df_resultado.to_excel("resultado.xlsx", index=False)
+# Salvar resultado
+resultado_df = pd.DataFrame(resultados, columns=["Termo", "Classe", "Subclasse"])
+resultado_df.to_excel("resultado.xlsx", index=False)
+
 print("Classificação concluída com sucesso. Arquivo salvo como resultado.xlsx.")
