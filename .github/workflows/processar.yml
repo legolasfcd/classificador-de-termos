@@ -1,0 +1,31 @@
+name: Classificar termos com OpenAI
+
+on:
+  workflow_dispatch:  # permite rodar manualmente
+
+jobs:
+  classificar:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Clonar o repositório
+      uses: actions/checkout@v3
+
+    - name: Configurar Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Instalar dependências
+      run: pip install -r requirements.txt
+
+    - name: Executar script de classificação
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: python classificar_termos.py
+
+    - name: Upload do resultado.xlsx como artefato
+      uses: actions/upload-artifact@v3
+      with:
+        name: resultado-classificado
+        path: resultado.xlsx
