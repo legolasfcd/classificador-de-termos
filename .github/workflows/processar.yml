@@ -1,7 +1,7 @@
 name: Classificar termos com OpenAI
 
 on:
-  workflow_dispatch:  # Permite executar manualmente
+  workflow_dispatch:
 
 jobs:
   classificar:
@@ -24,8 +24,10 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: python classificar_termos.py
 
-      - name: Upload do resultado.xlsx como artefato
+      - name: Upload dos resultados como artefato
         uses: actions/upload-artifact@v4
         with:
           name: resultado-classificado
-          path: resultado.xlsx
+          path: |
+            resultado.xlsx
+            resultado.csv
