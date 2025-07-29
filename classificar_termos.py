@@ -3,19 +3,17 @@ import time
 import openai
 import pandas as pd
 
-# Configurar chave da API com variável de ambiente
+# Configurar a chave da API via variável de ambiente
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Carregar termos
+# Leitura dos dados
 df_termos = pd.read_excel("termos.xlsx")
 termos = df_termos["Termo"].dropna().tolist()
 
-# Carregar estrutura de categorias
+# Leitura da ontologia
 df_categorias = pd.read_excel("categorias.xlsx")
 classes_validas = df_categorias["Classe"].dropna().unique().tolist()
 subclasses_validas = df_categorias["Subclasse"].dropna().unique().tolist()
-
-# Gerar strings para injetar no prompt
 classes_str = ", ".join(classes_validas)
 subclasses_str = ", ".join(subclasses_validas)
 
@@ -24,25 +22,39 @@ bloco_tamanho = 30
 modelo = "gpt-3.5-turbo"
 resultados = []
 
-# Loop de classificação por blocos
+# Processamento por blocos
 for i in range(0, len(termos), bloco_tamanho):
     lote = termos[i:i + bloco_tamanho]
 
     prompt = f"""
-Você é um classificador de termos. Para cada termo abaixo, atribua:
+Você é um classificador semântico de termos, com base em uma **ontologia fechada** composta por categorias e subcategorias pré-estabelecidas.
 
-- Uma **Classe** entre as seguintes: {classes_str}
-- Uma **Subclasse** entre as seguintes: {subclasses_str}
+Seu objetivo é:
+- Interpretar o **significado e conceito** de cada termo fornecido
+- Atribuir a **Classe** e a **Subclasse** mais apropriadas, com base na ontologia abaixo
+- Respeitar rigorosamente os nomes disponíveis (sem criar novos termos)
 
-Se nenhuma subclasse for apropriada, crie uma nova subclasse e marque com asterisco (*).
+📚 Esta é uma estrutura ontológica — ou seja, um modelo de conhecimento onde os conceitos e relações já estão definidos. Você deve encontrar o melhor encaixe para o significado de cada termo, e **não criar categorias novas**, mesmo que alguma pareça mais precisa.
 
-Formato da resposta:
+✔️ Classes permitidas:
+{classes_str}
+
+✔️ Subclasses permitidas:
+{subclasses_str}
+
+⚠️ Se um termo não puder ser classificado com precisão dentro da ontologia, retorne:
+Termo | - | -
+
+⚠️ Não crie novas Classes nem Subclasses.
+⚠️ Não altere nomes existentes. Use apenas as Classes e Subclasses listadas.
+
+📌 Formato obrigatório:
 Termo | Classe | Subclasse
 
 Termos:
 {chr(10).join(f"- {termo}" for termo in lote)}
 
-Responda apenas com a tabela.
+Responda apenas com a tabela. Nada mais.
 """
 
     try:
@@ -53,27 +65,21 @@ Responda apenas com a tabela.
         )
 
         resposta = response.choices[0].message["content"]
-        print(f"\n🔹 Bloco {i//bloco_tamanho + 1} processado")
+        print(f"\n🔹 Bloco {i // bloco_tamanho + 1} processado")
         print(resposta)
 
         for linha in resposta.strip().split("\n"):
             if "|" in linha:
                 partes = [p.strip() for p in linha.split("|")]
                 if len(partes) == 3:
-                    termo, classe, subclasse = partes
-
-                    # Verifica se subclasse não reconhecida foi criada
-                    if subclasse not in subclasses_validas:
-                        print(f"⚠️ Nova subclasse sugerida: {subclasse}")
-
-                    resultados.append([termo, classe, subclasse])
+                    resultados.append(partes)
 
         time.sleep(1)
 
     except Exception as e:
         print(f"❌ Erro no bloco {i // bloco_tamanho + 1}: {e}")
 
-# Salvar resultados
+# Salvar resultado
 if resultados:
     df_resultado = pd.DataFrame(resultados, columns=["Termo", "Classe", "Subclasse"])
     df_resultado.to_excel("resultado-classificado.xlsx", index=False)
