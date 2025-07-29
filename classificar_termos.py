@@ -3,19 +3,26 @@ import time
 import openai
 import pandas as pd
 
-# Configurar a chave da API via variável de ambiente
+# Configurar a chave da API
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Leitura dos dados
-df_termos = pd.read_excel("termos.xlsx")
-termos = df_termos["Termo"].dropna().tolist()
+# Carregar dados
+termos_df = pd.read_excel("termos.xlsx")
+termos = termos_df["Termo"].dropna().tolist()
 
-# Leitura da ontologia
-df_categorias = pd.read_excel("categorias.xlsx")
-classes_validas = df_categorias["Classe"].dropna().unique().tolist()
-subclasses_validas = df_categorias["Subclasse"].dropna().unique().tolist()
-classes_str = ", ".join(classes_validas)
-subclasses_str = ", ".join(subclasses_validas)
+categorias_df = pd.read_excel("categorias.xlsx")
+
+# Gerar pares Classe > Subclasse
+linhas_formatadas = categorias_df.apply(lambda row: f"- {row['Classe']} > {row['Subclasse']}", axis=1)
+categorias_relacionadas = "\n".join(linhas_formatadas)
+
+# Criar dicionário Classe -> Subclasses válidas (uso futuro se necessário)
+classe_para_subclasses = (
+    categorias_df.dropna()
+    .groupby("Classe")["Subclasse"]
+    .apply(set)
+    .to_dict()
+)
 
 # Parâmetros
 bloco_tamanho = 30
@@ -27,34 +34,27 @@ for i in range(0, len(termos), bloco_tamanho):
     lote = termos[i:i + bloco_tamanho]
 
     prompt = f"""
-Você é um classificador semântico de termos, com base em uma **ontologia fechada** composta por categorias e subcategorias pré-estabelecidas.
+Você deve classificar semanticamente os termos a seguir com base em uma lista **fechada de pares Classe > Subclasse**. Para cada termo, selecione:
 
-Seu objetivo é:
-- Interpretar o **significado e conceito** de cada termo fornecido
-- Atribuir a **Classe** e a **Subclasse** mais apropriadas, com base na ontologia abaixo
-- Respeitar rigorosamente os nomes disponíveis (sem criar novos termos)
+- A Classe mais apropriada (categoria principal)
+- A Subclasse correspondente, vinculada à Classe escolhida
 
-📚 Esta é uma estrutura ontológica — ou seja, um modelo de conhecimento onde os conceitos e relações já estão definidos. Você deve encontrar o melhor encaixe para o significado de cada termo, e **não criar categorias novas**, mesmo que alguma pareça mais precisa.
+⚠️ Cada Subclasse só pode ser usada com a Classe à qual ela está associada. Não combine livremente. Use **apenas os pares Classe > Subclasse listados abaixo**.
 
-✔️ Classes permitidas:
-{classes_str}
+Categorias permitidas:
+{categorias_relacionadas}
 
-✔️ Subclasses permitidas:
-{subclasses_str}
-
-⚠️ Se um termo não puder ser classificado com precisão dentro da ontologia, retorne:
+Se o termo **não se encaixar em nenhuma das combinações listadas**, retorne:
 Termo | - | -
 
-⚠️ Não crie novas Classes nem Subclasses.
-⚠️ Não altere nomes existentes. Use apenas as Classes e Subclasses listadas.
-
-📌 Formato obrigatório:
-Termo | Classe | Subclasse
+⚠️ Não crie novas classes ou subclasses.
+⚠️ Não traduza ou altere nomes.
+⚠️ Siga exatamente a estrutura: Termo | Classe | Subclasse
 
 Termos:
 {chr(10).join(f"- {termo}" for termo in lote)}
 
-Responda apenas com a tabela. Nada mais.
+Responda apenas com a tabela.
 """
 
     try:
