@@ -82,8 +82,8 @@ Responda apenas com a tabela.
 # Salvar resultado
 if resultados:
     df_resultado = pd.DataFrame(resultados, columns=["Termo", "Classe", "Subclasse"])
-    df_resultado.to_excel("resultado-classificado.xlsx", index=False)
-    df_resultado.to_csv("resultado-classificado.csv", index=False, encoding="utf-8-sig")
+    df_resultado.to_excel("resultado.xlsx", index=False)
+    df_resultado.to_csv("resultado.csv", index=False, encoding="utf-8-sig")
     print(f"\n✅ Classificação finalizada. {len(df_resultado)} termos salvos.")
 else:
     print("\n⚠️ Nenhum resultado classificado foi gerado.")
